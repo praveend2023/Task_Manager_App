@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Task Manager</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 2rem;
+    background-color: #f4f4f4;
+  }
+  h1 {
+    color: #333;
+  }
+  .container {
+    max-width: 600px;
+    margin: auto;
+    background: white;
+    padding: 1rem 2rem 2rem 2rem;
+    border-radius: 8px;
+    box-shadow: 0 0 10px #ccc;
+  }
+  label {
+    display: block;
+    margin-top: 1rem;
+  }
+  input[type="text"], input[type="password"] {
+    width: 100%;
+    padding: 0.5rem;
+    margin-top: 0.3rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+  button {
+    margin-top: 1rem;
+    padding: 0.7rem 1.2rem;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  button:disabled {
+    background-color: #aaa;
+  }
+  ul {
+    list-style: none;
+    padding-left: 0;
+  }
+  li {
+    background: #e9ecef;
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .error {
+    color: red;
+    margin-top: 0.5rem;
+  }
+  .success {
+    color: green;
+    margin-top: 0.5rem;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Task Manager</h1>
+
+  <div id="auth-section">
+    <h2>Register</h2>
+    <label>Username
+      <input type="text" id="register-username" />
+    </label>
+    <label>Password
+      <input type="password" id="register-password" />
+    </label>
+    <button id="register-btn">Register</button>
+    <div id="register-message"></div>
+
+    <h2>Login</h2>
+    <label>Username
+      <input type="text" id="login-username" />
+    </label>
+    <label>Password
+      <input type="password" id="login-password" />
+    </label>
+    <button id="login-btn">Login</button>
+    <div id="login-message"></div>
+  </div>
+
+  <div id="task-section" style="display:none;">
+    <h2>Your Tasks</h2>
+    <ul id="task-list"></ul>
+    <label>New Task
+      <input type="text" id="new-task" />
+    </label>
+    <button id="add-task-btn">Add Task</button>
+    <button id="logout-btn" style="background-color:#dc3545;">Logout</button>
+    <div id="task-message"></div>
+  </div>
+</div>
+
+<script>
+  const registerBtn = document.getElementById('register-btn');
+  const loginBtn = document.getElementById('login-btn');
+  const logoutBtn = document.getElementById('logout-btn');
+  const addTaskBtn = document.getElementById('add-task-btn');
+
+  const registerMessage = document.getElementById('register-message');
+  const loginMessage = document.getElementById('login-message');
+  const taskMessage = document.getElementById('task-message');
+
+  const authSection = document.getElementById('auth-section');
+  const taskSection = document.getElementById('task-section');
+
+  function showMessage(element, message, isError = false) {
+    element.textContent = message;
+    element.className = isError ? 'error' : 'success';
+  }
+
+async function registerUser() {
+    const username = document.getElementById('register-username').value.trim();
+    const password = document.getElementById('register-password').value.trim();
+    if (!username || !password) {
+      showMessage(registerMessage, 'Username and password are required', true);
+      return;
+    }
+    try {
+      const res = await fetch('/api/register/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username, password})
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // Clear registration form
+        document.getElementById('register-username').value = '';
+        document.getElementById('register-password').value = '';
+        showMessage(registerMessage, 'Registration successful. Please login.');
+        // Redirect to login page (show login form only)
+        authSection.style.display = 'block';
+        taskSection.style.display = 'none';
+        // Clear registration form inputs
+        document.getElementById('register-username').value = '';
+        document.getElementById('register-password').value = '';
+        // Clear login form inputs and messages
+        document.getElementById('login-username').value = '';
+        document.getElementById('login-password').value = '';
+        loginMessage.textContent = '';
+        // Focus on login username input
+        document.getElementById('login-username').focus();
+      } else {
+        const errorMsg = data.details ? data.error + ': ' + data.details : data.error || 'Registration failed';
+        showMessage(registerMessage, errorMsg, true);
+      }
+    } catch (err) {
+      showMessage(registerMessage, 'Error connecting to server', true);
+    }
+  }
+
+  async function loginUser() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value.trim();
+    if (!username || !password) {
+      showMessage(loginMessage, 'Username and password are required', true);
+      return;
+    }
+    try {
+      const res = await fetch('/api/login/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username, password})
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showMessage(loginMessage, 'Login successful');
+        authSection.style.display = 'none';
+        taskSection.style.display = 'block';
+        loadTasks();
+      } else {
+        showMessage(loginMessage, data.error || 'Login failed', true);
+      }
+    } catch (err) {
+      showMessage(loginMessage, 'Error connecting to server', true);
+    }
+  }
+
+  async function loadTasks() {
+    try {
+      const res = await fetch('/api/tasks/', {
+        method: 'GET',
+        credentials: 'same-origin'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const taskList = document.getElementById('task-list');
+        taskList.innerHTML = '';
+        data.tasks.forEach(task => {
+          const li = document.createElement('li');
+          li.textContent = task.task;
+          const delBtn = document.createElement('button');
+          delBtn.textContent = 'Delete';
+          delBtn.style.marginLeft = '1rem';
+          delBtn.onclick = () => deleteTask(task.id);
+          li.appendChild(delBtn);
+          taskList.appendChild(li);
+        });
+      } else {
+        showMessage(taskMessage, data.error || 'Failed to load tasks', true);
+      }
+    } catch (err) {
+      showMessage(taskMessage, 'Error connecting to server', true);
+    }
+  }
+
+  async function addTask() {
+    const newTaskInput = document.getElementById('new-task');
+    const taskText = newTaskInput.value.trim();
+    if (!taskText) {
+      showMessage(taskMessage, 'Task text is required', true);
+      return;
+    }
+    try {
+      const res = await fetch('/api/tasks/add/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({task: taskText})
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showMessage(taskMessage, 'Task added');
+        newTaskInput.value = '';
+        loadTasks();
+      } else {
+        showMessage(taskMessage, data.error || 'Failed to add task', true);
+      }
+    } catch (err) {
+      showMessage(taskMessage, 'Error connecting to server', true);
+    }
+  }
+
+  async function deleteTask(taskId) {
+    try {
+      const res = await fetch('/api/tasks/delete/' + taskId + '/', {
+        method: 'DELETE',
+        credentials: 'same-origin'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showMessage(taskMessage, 'Task deleted');
+        loadTasks();
+      } else {
+        showMessage(taskMessage, data.error || 'Failed to delete task', true);
+      }
+    } catch (err) {
+      showMessage(taskMessage, 'Error connecting to server', true);
+    }
+  }
+
+async function logoutUser() {
+    try {
+      const res = await fetch('/api/logout/', {
+        method: 'POST',
+        credentials: 'same-origin'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showMessage(taskMessage, 'Logged out');
+        authSection.style.display = 'block';
+        taskSection.style.display = 'none';
+        // Clear the registration and login form inputs and messages
+        document.getElementById('register-username').value = '';
+        document.getElementById('register-password').value = '';
+        document.getElementById('login-username').value = '';
+        document.getElementById('login-password').value = '';
+        registerMessage.textContent = '';
+        loginMessage.textContent = '';
+      } else {
+        showMessage(taskMessage, data.error || 'Failed to logout', true);
+      }
+    } catch (err) {
+      showMessage(taskMessage, 'Error connecting to server', true);
+    }
+  }
+
+  registerBtn.addEventListener('click', registerUser);
+  loginBtn.addEventListener('click', loginUser);
+  addTaskBtn.addEventListener('click', addTask);
+  logoutBtn.addEventListener('click', logoutUser);
+</script>
+</body>
+</html>
